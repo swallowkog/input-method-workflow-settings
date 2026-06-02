@@ -1,0 +1,26 @@
+name: 功能建議
+description: 提出新功能或改善建議
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 想解決的問題
+      description: 你遇到什麼工作流上的困擾？
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建議做法
+      description: 你希望 App 怎麼改善？
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: 補充資訊
+      description: 可以附上使用情境、App 名稱或截圖。請避免包含私人資訊。
+    validations:
+      required: false

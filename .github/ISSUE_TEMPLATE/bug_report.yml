@@ -1,0 +1,72 @@
+name: Beta 問題回報
+description: 回報 0.1.0 Beta 使用中遇到的問題
+title: "[Bug] "
+labels: [bug, beta]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        謝謝你協助測試。請不要貼上任何密碼、私人文件內容或實際輸入內容。
+  - type: input
+    id: version
+    attributes:
+      label: App 版本
+      placeholder: 0.1.0 Beta
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS 版本
+      placeholder: 例如 macOS 14.5 / 15.0
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: 問題類型
+      options:
+        - App 自動切換輸入法
+        - 數字鍵盤半形修正
+        - macOS 權限設定
+        - Menu Bar 狀態選單
+        - 安裝 / 啟動
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: 問題描述
+      description: 簡單描述發生了什麼。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 重現步驟
+      placeholder: |
+        1. 開啟 ...
+        2. 切換到 ...
+        3. 按下 ...
+    validations:
+      required: false
+  - type: textarea
+    id: expected
+    attributes:
+      label: 預期結果
+    validations:
+      required: false
+  - type: textarea
+    id: actual
+    attributes:
+      label: 實際結果
+    validations:
+      required: false
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: 截圖
+      description: 如果方便，可以附上設定畫面或錯誤狀態截圖。請避免包含私人資訊。
+    validations:
+      required: false

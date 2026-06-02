@@ -30,6 +30,12 @@ Beta 測試重點與已知限制請見 [0.1.0 Beta 測試指南](docs/BETA_TESTI
 
 ![數字鍵盤修正區塊](docs/screenshots/numpad-correction.png)
 
+## 回報問題
+
+如果你在 Beta 測試中遇到問題，請到 [GitHub Issues](https://github.com/swallowkog/input-method-workflow-settings/issues) 回報。
+
+回報時請盡量附上 App 版本、macOS 版本、問題描述與重現步驟。請不要貼上任何密碼、私人文件內容或實際輸入內容。
+
 ## 建置
 
 ```bash

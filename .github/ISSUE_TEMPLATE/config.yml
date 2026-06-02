@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Beta 問題回報信箱
+    url: mailto:swallowkog@gmail.com
+    about: 如果不想公開回報，可以直接寄信。
