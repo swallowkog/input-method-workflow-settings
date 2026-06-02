@@ -4,6 +4,13 @@ macOS 常駐輸入法工作流工具，用來防止中文輸入法破壞快捷�
 
 App 啟動後會常駐在 macOS 上方選單列，用一個鍵盤加漢堡選單的小圖示；點圖示可以打開產品化設定視窗，依照「① 選擇 App　② 指定輸入法　③ 儲存並啟用」三步驟完成設定。
 
+
+## 下載 Beta
+
+目前公開測試版本為 `0.1.0 Beta`。請到 [GitHub Releases](https://github.com/swallowkog/input-method-workflow-settings/releases) 下載 `Input Method Agent Installer.pkg`。
+
+Beta 測試重點與已知限制請見 [0.1.0 Beta 測試指南](docs/BETA_TESTING.md)。
+
 ## 建置
 
 ```bash
