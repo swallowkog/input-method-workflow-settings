@@ -1,0 +1,17 @@
+# macOS
+.DS_Store
+
+# SwiftPM / build products
+.build/
+.swiftpm/
+DerivedData/
+
+# Packaged app artifacts
+dist/
+*.app
+*.pkg
+*.zip
+
+# Local runtime config
+config.json
+*.log

@@ -1,0 +1,9 @@
+{
+  "defaultInputSourceID": "com.apple.keylayout.ABC",
+  "logSwitches": false,
+  "appInputSources": {
+    "com.apple.TextEdit": "com.apple.inputmethod.TCIM.Zhuyin",
+    "com.apple.Terminal": "com.apple.keylayout.ABC",
+    "com.microsoft.VSCode": "com.apple.keylayout.ABC"
+  }
+}
