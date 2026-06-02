@@ -11,6 +11,25 @@ App 啟動後會常駐在 macOS 上方選單列，用一個鍵盤加漢堡選單
 
 Beta 測試重點與已知限制請見 [0.1.0 Beta 測試指南](docs/BETA_TESTING.md)。
 
+
+## 截圖
+
+### 設定視窗
+
+![輸入法工作流設定主視窗](docs/screenshots/settings-window.png)
+
+### 權限設定引導
+
+![macOS 權限設定引導](docs/screenshots/permission-guide.png)
+
+### Menu Bar 狀態選單
+
+![Menu Bar 狀態選單](docs/screenshots/menu-bar.png)
+
+### 數字鍵盤修正
+
+![數字鍵盤修正區塊](docs/screenshots/numpad-correction.png)
+
 ## 建置
 
 ```bash
