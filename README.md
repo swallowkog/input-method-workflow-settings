@@ -7,9 +7,9 @@ App 啟動後會常駐在 macOS 上方選單列，用一個鍵盤加漢堡選單
 
 ## 下載 Beta
 
-目前公開測試版本為 `0.1.0 Beta`。請到 [GitHub Releases](https://github.com/swallowkog/input-method-workflow-settings/releases) 下載 `Input Method Agent Installer.pkg`。
+目前公開測試版本為 `0.1.1 Beta`。請到 [GitHub Releases](https://github.com/swallowkog/input-method-workflow-settings/releases) 下載 `Input Method Agent Installer.pkg`。
 
-Beta 測試重點與已知限制請見 [0.1.0 Beta 測試指南](docs/BETA_TESTING.md)。
+Beta 測試重點與已知限制請見 [0.1.1 Beta 測試指南](docs/BETA_TESTING.md)。
 
 
 ## 截圖

@@ -5,7 +5,7 @@ import Foundation
 
 private enum AppMetadata {
     static let displayName = "輸入法工作流設定"
-    static let versionDisplay = "0.1.0 Beta"
+    static let versionDisplay = "0.1.1 Beta"
     static let repositoryReleasesURL = URL(string: "https://github.com/swallowkog/input-method-workflow-settings/releases")!
     static let githubReleasesAPIURL = URL(string: "https://api.github.com/repos/swallowkog/input-method-workflow-settings/releases?per_page=1")!
 }
