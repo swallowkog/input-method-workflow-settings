@@ -3,8 +3,16 @@ import ApplicationServices
 import Carbon
 import Foundation
 
+private enum AppMetadata {
+    static let displayName = "輸入法工作流設定"
+    static let versionDisplay = "0.1.0 Beta"
+    static let repositoryReleasesURL = URL(string: "https://github.com/swallowkog/input-method-workflow-settings/releases")!
+    static let githubReleasesAPIURL = URL(string: "https://api.github.com/repos/swallowkog/input-method-workflow-settings/releases?per_page=1")!
+}
+
 struct AgentConfig: Codable {
     var defaultInputSourceID: String?
+    var useGlobalDefaultForUnspecifiedApps: Bool?
     var appInputSources: [String: String]
     var logSwitches: Bool?
     var forceAsciiNumpad: Bool?
@@ -15,6 +23,7 @@ struct AgentConfig: Codable {
     static func fallback() -> AgentConfig {
         AgentConfig(
             defaultInputSourceID: "com.apple.keylayout.ABC",
+            useGlobalDefaultForUnspecifiedApps: true,
             appInputSources: [:],
             logSwitches: false,
             forceAsciiNumpad: false,
@@ -22,6 +31,12 @@ struct AgentConfig: Codable {
             instantCapsLockSwitch: false,
             autoSwitchEnabled: true
         )
+    }
+}
+
+extension AgentConfig {
+    var shouldUseGlobalDefaultForUnspecifiedApps: Bool {
+        useGlobalDefaultForUnspecifiedApps != false
     }
 }
 
@@ -262,12 +277,17 @@ private func workflowStatusSnapshot(
         if let appInputSourceID = config.appInputSources[bundleID] {
             targetInputSourceID = appInputSourceID
             ruleDescription = inputSourceName(for: appInputSourceID, inputSources: inputSources)
-        } else if let defaultInputSourceID = config.defaultInputSourceID {
-            targetInputSourceID = defaultInputSourceID
-            ruleDescription = "全域預設（\(inputSourceName(for: defaultInputSourceID, inputSources: inputSources))）"
+        } else if config.shouldUseGlobalDefaultForUnspecifiedApps {
+            if let defaultInputSourceID = config.defaultInputSourceID {
+                targetInputSourceID = defaultInputSourceID
+                ruleDescription = "全域預設（\(inputSourceName(for: defaultInputSourceID, inputSources: inputSources))）"
+            } else {
+                targetInputSourceID = nil
+                ruleDescription = "全域預設（未設定）"
+            }
         } else {
             targetInputSourceID = nil
-            ruleDescription = "全域預設（未設定）"
+            ruleDescription = "不切換"
         }
     } else {
         targetInputSourceID = nil
@@ -437,6 +457,112 @@ final class InputSourceManager {
     }
 }
 
+
+struct GitHubRelease: Decodable {
+    let tagName: String
+    let name: String?
+    let htmlURL: URL
+
+    enum CodingKeys: String, CodingKey {
+        case tagName = "tag_name"
+        case name
+        case htmlURL = "html_url"
+    }
+}
+
+enum UpdateCheckResult {
+    case noRelease
+    case upToDate(version: String)
+    case updateAvailable(version: String, url: URL)
+}
+
+enum UpdateCheckError: LocalizedError {
+    case invalidResponse
+    case requestFailed(Int)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidResponse:
+            return "無法解析 GitHub 更新資訊。"
+        case .requestFailed(let statusCode):
+            return "GitHub 更新檢查失敗，HTTP 狀態碼：\(statusCode)。"
+        }
+    }
+}
+
+final class GitHubUpdateChecker {
+    func check(completion: @escaping @Sendable (Result<UpdateCheckResult, Error>) -> Void) {
+        var request = URLRequest(url: AppMetadata.githubReleasesAPIURL)
+        request.setValue("InputMethodAgent/\(AppMetadata.versionDisplay)", forHTTPHeaderField: "User-Agent")
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 12
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error {
+                completion(.failure(error))
+                return
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                completion(.failure(UpdateCheckError.invalidResponse))
+                return
+            }
+
+            guard (200..<300).contains(httpResponse.statusCode) else {
+                completion(.failure(UpdateCheckError.requestFailed(httpResponse.statusCode)))
+                return
+            }
+
+            guard let data else {
+                completion(.failure(UpdateCheckError.invalidResponse))
+                return
+            }
+
+            do {
+                let releases = try JSONDecoder().decode([GitHubRelease].self, from: data)
+                guard let latest = releases.first else {
+                    completion(.success(.noRelease))
+                    return
+                }
+
+                let version = latest.name?.isEmpty == false ? latest.name! : latest.tagName
+                if Self.isRemoteVersionNewer(latest.tagName, than: AppMetadata.versionDisplay) {
+                    completion(.success(.updateAvailable(version: version, url: latest.htmlURL)))
+                } else {
+                    completion(.success(.upToDate(version: version)))
+                }
+            } catch {
+                completion(.failure(error))
+            }
+        }.resume()
+    }
+
+    private static func isRemoteVersionNewer(_ remote: String, than local: String) -> Bool {
+        let remoteComponents = numericVersionComponents(from: remote)
+        let localComponents = numericVersionComponents(from: local)
+        guard !remoteComponents.isEmpty, !localComponents.isEmpty else {
+            return remote != local
+        }
+
+        let count = max(remoteComponents.count, localComponents.count)
+        for index in 0..<count {
+            let remoteValue = index < remoteComponents.count ? remoteComponents[index] : 0
+            let localValue = index < localComponents.count ? localComponents[index] : 0
+            if remoteValue != localValue {
+                return remoteValue > localValue
+            }
+        }
+
+        return false
+    }
+
+    private static func numericVersionComponents(from version: String) -> [Int] {
+        version
+            .split { !$0.isNumber }
+            .compactMap { Int($0) }
+    }
+}
+
 final class InputMethodAgent: NSObject {
     private static let followUpApplyDelay: TimeInterval = 0.25
 
@@ -552,7 +678,17 @@ final class InputMethodAgent: NSObject {
             return
         }
 
-        guard let desiredInputSourceID = config.appInputSources[bundleID] ?? config.defaultInputSourceID else {
+        let desiredInputSourceID: String?
+        if let appInputSourceID = config.appInputSources[bundleID] {
+            desiredInputSourceID = appInputSourceID
+        } else if config.shouldUseGlobalDefaultForUnspecifiedApps {
+            desiredInputSourceID = config.defaultInputSourceID
+        } else {
+            desiredInputSourceID = nil
+        }
+
+        guard let desiredInputSourceID else {
+            postRuntimeStatusChanged()
             return
         }
 
@@ -1652,6 +1788,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private let tableView = NSTableView()
     private let searchField = NSSearchField()
     private let filterControl = NSSegmentedControl(labels: ["全部", "已設定", "跟隨全域", "ABC", "注音"], trackingMode: .selectOne, target: nil, action: nil)
+    private let useGlobalDefaultCheckbox = NSButton(checkboxWithTitle: "未指定 App 時使用全域預設", target: nil, action: nil)
     private let defaultInputPopup = NSPopUpButton()
     private let selectedInputPopup = NSPopUpButton()
     private let moreActionsPopup = NSPopUpButton(frame: .zero, pullsDown: true)
@@ -1659,6 +1796,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private let selectedAppNameLabel = NSTextField(labelWithString: "請先選擇一個 App")
     private let selectedInputPrefixLabel = NSTextField(labelWithString: "開啟時使用：")
     private let startupCheckbox = NSButton(checkboxWithTitle: "登入後自動啟動", target: nil, action: nil)
+    private let checkForUpdatesButton = NSButton(title: "檢查 GitHub 更新", target: nil, action: nil)
+    private let updateStatusLabel = NSTextField(labelWithString: "目前版本：\(AppMetadata.versionDisplay)")
     private let capsLockInstantSwitchCheckbox = NSButton(checkboxWithTitle: "實驗功能：Caps Lock 快速切換輸入法", target: nil, action: nil)
     private let numpadAsciiCheckbox = NSButton(checkboxWithTitle: "在中文輸入法下，數字鍵盤仍輸入半形數字", target: nil, action: nil)
     private let numpadSpeedControl = NSSegmentedControl(labels: ["快速", "穩定"], trackingMode: .selectOne, target: nil, action: nil)
@@ -1697,6 +1836,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private var advancedSettingsVisible = false
     private var hasUnsavedChanges = false
     private var permissionGuideWindowController: PermissionGuideWindowController?
+    private let updateChecker = GitHubUpdateChecker()
 
     private static let advancedSettingsVisibleKey = "InputMethodAgentAdvancedSettingsVisible"
     private static let advancedSettingsPreferenceInitializedKey = "InputMethodAgentAdvancedSettingsPreferenceInitialized"
@@ -1746,13 +1886,13 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         self.rules = Self.loadApplicationRules(config: store.config)
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 960, height: 760),
+            contentRect: NSRect(x: 0, y: 0, width: 960, height: 700),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.title = "輸入法工作流設定"
-        window.minSize = NSSize(width: 880, height: 680)
+        window.minSize = NSSize(width: 880, height: 620)
 
         super.init(window: window)
         setupUI()
@@ -1914,6 +2054,15 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         let (globalBox, globalStack) = sectionBox(title: "全域設定")
         contentStack.addArrangedSubview(globalBox)
 
+        let globalToggleRow = horizontalStack(spacing: 10)
+        useGlobalDefaultCheckbox.target = self
+        useGlobalDefaultCheckbox.action = #selector(globalDefaultFallbackChanged)
+        globalToggleRow.addArrangedSubview(useGlobalDefaultCheckbox)
+        let globalToggleSpacer = NSView()
+        globalToggleSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        globalToggleRow.addArrangedSubview(globalToggleSpacer)
+        globalStack.addArrangedSubview(globalToggleRow)
+
         let globalRow = horizontalStack(spacing: 10)
         globalRow.addArrangedSubview(label("全域預設輸入法"))
         defaultInputPopup.target = self
@@ -1998,7 +2147,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.setContentHuggingPriority(.defaultLow, for: .vertical)
         scrollView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
-        scrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 250).isActive = true
+        scrollView.heightAnchor.constraint(equalToConstant: 178).isActive = true
         rulesStack.addArrangedSubview(scrollView)
 
         setupTable()
@@ -2161,6 +2310,18 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         startupCheckbox.state = StartupLaunchAgent.isEnabled() ? .on : .off
         advancedStack.addArrangedSubview(startupCheckbox)
 
+        advancedStack.addArrangedSubview(advancedSectionTitle("更新"))
+        let updateRow = horizontalStack(spacing: 8)
+        checkForUpdatesButton.target = self
+        checkForUpdatesButton.action = #selector(checkForUpdates)
+        checkForUpdatesButton.bezelStyle = .rounded
+        updateRow.addArrangedSubview(checkForUpdatesButton)
+        updateStatusLabel.textColor = .secondaryLabelColor
+        updateStatusLabel.font = .systemFont(ofSize: 12)
+        updateStatusLabel.lineBreakMode = .byTruncatingTail
+        updateRow.addArrangedSubview(updateStatusLabel)
+        advancedStack.addArrangedSubview(updateRow)
+
         if DeveloperFeatureFlags.showCapsLockExperiment {
             advancedStack.addArrangedSubview(advancedSectionTitle("實驗功能"))
             capsLockInstantSwitchCheckbox.target = self
@@ -2231,7 +2392,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         footerRow.widthAnchor.constraint(equalTo: root.widthAnchor, constant: -36).isActive = true
 
         updatePermissionStatus()
-        updateGlobalDefaultSummary()
+        updateGlobalDefaultControls()
         updateRuntimeStatus()
         updateNumpadTestStatus()
         updateEmptyState()
@@ -2567,7 +2728,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         所有設定皆儲存在本機。
         App 不記錄、不儲存、不上傳任何輸入內容。
 
-        開始時請先選擇全域預設輸入法，再套用常用規則或加入 App，最後開啟必要的 macOS 權限。
+        開始時請先確認未指定 App 的處理方式，再套用常用規則或加入 App，最後開啟必要的 macOS 權限。
         """
         alert.addButton(withTitle: "開始設定")
         alert.runModal()
@@ -2603,8 +2764,9 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
 
     private func reloadDefaultPopup() {
         populate(defaultInputPopup)
+        useGlobalDefaultCheckbox.state = store.config.shouldUseGlobalDefaultForUnspecifiedApps ? .on : .off
         selectItem(in: defaultInputPopup, representedObject: store.config.defaultInputSourceID)
-        updateGlobalDefaultSummary()
+        updateGlobalDefaultControls()
     }
 
     private func reloadSelectedInputPopup() {
@@ -2686,12 +2848,25 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         return inputSourceName(for: id)
     }
 
-    private func globalDefaultTitle() -> String {
-        "全域預設（\(defaultInputSourceName())）"
+    private func usesGlobalDefaultForUnspecifiedApps() -> Bool {
+        useGlobalDefaultCheckbox.state == .on
     }
 
-    private func updateGlobalDefaultSummary() {
-        globalDefaultSummaryLabel.stringValue = "未指定 App 使用：\(defaultInputSourceName())"
+    private func globalDefaultTitle() -> String {
+        if usesGlobalDefaultForUnspecifiedApps() {
+            return "全域預設（\(defaultInputSourceName())）"
+        }
+
+        return "不切換（維持目前輸入法）"
+    }
+
+    private func updateGlobalDefaultControls() {
+        let isEnabled = usesGlobalDefaultForUnspecifiedApps()
+        defaultInputPopup.isEnabled = isEnabled
+        filterControl.setLabel(isEnabled ? "跟隨全域" : "不切換", forSegment: 2)
+        globalDefaultSummaryLabel.stringValue = isEnabled
+            ? "未指定 App 使用：\(defaultInputSourceName())"
+            : "未指定 App：不切換，維持目前輸入法"
     }
 
     private func updateEmptyState() {
@@ -2743,7 +2918,11 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     }
 
     private func effectiveInputSourceID(for rule: AppRule) -> String? {
-        rule.inputSourceID ?? selectedDefaultInputSourceID()
+        if let inputSourceID = rule.inputSourceID {
+            return inputSourceID
+        }
+
+        return usesGlobalDefaultForUnspecifiedApps() ? selectedDefaultInputSourceID() : nil
     }
 
     private func isABCInputSource(_ id: String?) -> Bool {
@@ -2816,11 +2995,74 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     }
 
     @objc private func defaultInputChanged() {
-        updateGlobalDefaultSummary()
+        updateGlobalDefaultControls()
         tableView.reloadData()
         reloadSelectedInputPopup()
         updateRuntimeStatus()
         saveSilently()
+    }
+
+    @objc private func globalDefaultFallbackChanged() {
+        updateGlobalDefaultControls()
+        tableView.reloadData()
+        reloadSelectedInputPopup()
+        updateRuntimeStatus()
+        saveSilently()
+
+        if usesGlobalDefaultForUnspecifiedApps() {
+            updateStatus("未指定 App 會使用全域預設輸入法")
+        } else {
+            updateStatus("未指定 App 將維持目前輸入法")
+        }
+    }
+
+
+    @objc private func checkForUpdates() {
+        checkForUpdatesButton.isEnabled = false
+        updateStatusLabel.stringValue = "正在檢查 GitHub Releases..."
+
+        updateChecker.check { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.checkForUpdatesButton.isEnabled = true
+
+                switch result {
+                case .success(.noRelease):
+                    self.updateStatusLabel.stringValue = "GitHub 尚未建立 Release"
+                    let alert = NSAlert()
+                    alert.messageText = "尚未建立可下載版本"
+                    alert.informativeText = "目前 GitHub Releases 裡還沒有正式發佈檔。之後建立 Release 後，這裡就能檢查新版。"
+                    alert.addButton(withTitle: "前往 Releases")
+                    alert.addButton(withTitle: "了解")
+                    if alert.runModal() == .alertFirstButtonReturn {
+                        NSWorkspace.shared.open(AppMetadata.repositoryReleasesURL)
+                    }
+                case .success(.upToDate(let version)):
+                    self.updateStatusLabel.stringValue = "已是最新版：\(AppMetadata.versionDisplay)"
+                    let alert = NSAlert()
+                    alert.messageText = "目前已是最新版"
+                    alert.informativeText = "目前版本：\(AppMetadata.versionDisplay)\nGitHub 最新版本：\(version)"
+                    alert.addButton(withTitle: "了解")
+                    alert.runModal()
+                case .success(.updateAvailable(let version, let url)):
+                    self.updateStatusLabel.stringValue = "有新版可用：\(version)"
+                    let alert = NSAlert()
+                    alert.messageText = "有新版可以下載"
+                    alert.informativeText = "目前版本：\(AppMetadata.versionDisplay)\nGitHub 最新版本：\(version)"
+                    alert.addButton(withTitle: "前往下載")
+                    alert.addButton(withTitle: "稍後")
+                    if alert.runModal() == .alertFirstButtonReturn {
+                        NSWorkspace.shared.open(url)
+                    }
+                case .failure(let error):
+                    self.updateStatusLabel.stringValue = "檢查更新失敗"
+                    let alert = NSAlert(error: error)
+                    alert.messageText = "無法檢查更新"
+                    alert.informativeText = "請確認網路連線後再試一次。\n\n\(error.localizedDescription)"
+                    alert.runModal()
+                }
+            }
+        }
     }
 
     @objc private func startupCheckboxChanged() {
@@ -3148,6 +3390,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
 
         return AgentConfig(
             defaultInputSourceID: defaultInputPopup.selectedItem?.representedObject as? String,
+            useGlobalDefaultForUnspecifiedApps: useGlobalDefaultCheckbox.state == .on,
             appInputSources: appInputSources,
             logSwitches: store.config.logSwitches,
             forceAsciiNumpad: numpadAsciiCheckbox.state == .on,
@@ -3989,15 +4232,15 @@ final class GUIAppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func showAbout() {
         let alert = NSAlert()
-        alert.messageText = "輸入法工作流設定"
-        alert.informativeText = "版本：0.1.0 Beta\n\n本 App 所有設定皆儲存在本機。\n不記錄、不儲存、不上傳任何輸入內容。"
+        alert.messageText = AppMetadata.displayName
+        alert.informativeText = "版本：\(AppMetadata.versionDisplay)\n\n本 App 所有設定皆儲存在本機。\n不記錄、不儲存、不上傳任何輸入內容。"
         alert.addButton(withTitle: "了解")
         alert.runModal()
     }
 
     @objc private func reportIssue() {
         let body = """
-        App 版本：0.1.0 Beta
+        App 版本：\(AppMetadata.versionDisplay)
         macOS 版本：\(ProcessInfo.processInfo.operatingSystemVersionString)
         問題描述：
         重現步驟：
@@ -4067,6 +4310,7 @@ func writeSampleConfig(to url: URL) throws {
     let sample = """
     {
       "defaultInputSourceID": "com.apple.keylayout.ABC",
+      "useGlobalDefaultForUnspecifiedApps": true,
       "logSwitches": false,
       "forceAsciiNumpad": false,
       "numpadAsciiSpeedMode": "fast",
