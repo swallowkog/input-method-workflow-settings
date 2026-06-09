@@ -5,7 +5,7 @@ import Foundation
 
 private enum AppMetadata {
     static let displayName = "輸入法工作流設定"
-    static let versionDisplay = "0.1.1 Beta"
+    static let versionDisplay = "0.1.2 Beta"
     static let repositoryReleasesURL = URL(string: "https://github.com/swallowkog/input-method-workflow-settings/releases")!
     static let githubReleasesAPIURL = URL(string: "https://api.github.com/repos/swallowkog/input-method-workflow-settings/releases?per_page=1")!
 }
@@ -997,9 +997,9 @@ final class NumpadAsciiEnforcer {
     private func timing() -> Timing {
         switch NumpadAsciiSpeedMode.resolved(from: configProvider().numpadAsciiSpeedMode) {
         case .fast:
-            return Timing(repostDelay: 0.025, firstRepostAfterSwitchDelay: 0.34, restoreDelay: 0.24)
+            return Timing(repostDelay: 0.015, firstRepostAfterSwitchDelay: 0.20, restoreDelay: 0.18)
         case .stable:
-            return Timing(repostDelay: 0.070, firstRepostAfterSwitchDelay: 0.55, restoreDelay: 1.10)
+            return Timing(repostDelay: 0.045, firstRepostAfterSwitchDelay: 0.32, restoreDelay: 0.55)
         }
     }
 
@@ -2183,8 +2183,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         numpadSpeedControl.target = self
         numpadSpeedControl.action = #selector(numpadSpeedChanged)
         numpadSpeedControl.segmentStyle = .texturedRounded
-        numpadSpeedControl.setToolTip("反應較快，適合大多數情況。", forSegment: 0)
-        numpadSpeedControl.setToolTip("相容性較高，適合輸入異常時使用。", forSegment: 1)
+        numpadSpeedControl.setToolTip("反應最快；請先按 Enter 完成注音組字再輸入數字。", forSegment: 0)
+        numpadSpeedControl.setToolTip("稍微放慢，適合快速模式偶爾漏字時使用。", forSegment: 1)
         let initialSpeedMode = NumpadAsciiSpeedMode.resolved(from: store.config.numpadAsciiSpeedMode)
         numpadSpeedControl.selectedSegment = initialSpeedMode == .stable ? 1 : 0
         numpadSpeedControl.isEnabled = numpadAsciiCheckbox.state == .on

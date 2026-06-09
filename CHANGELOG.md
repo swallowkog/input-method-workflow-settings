@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.1.2 Beta
+
+### Changed
+
+- 加快數字鍵盤修正的快速與穩定模式延遲，讓手動按 Enter 完成注音組字後接續輸入右側數字更順。
+- 更新數字鍵盤速度提示，提醒先完成注音組字再輸入數字。
+
+### Known Issues
+
+- 如果注音尚未按 Enter 完成組字就直接按右側數字鍵，部分 App 仍可能遇到輸入順序問題。
+- 安裝包尚未 Developer ID 簽署與 notarize。
+
 ## v0.1.1 Beta
 
 ### Added
